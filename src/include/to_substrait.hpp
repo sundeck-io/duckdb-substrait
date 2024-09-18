@@ -57,6 +57,7 @@ private:
 	substrait::Rel *TransformDistinct(LogicalOperator &dop);
 	substrait::Rel *TransformExcept(LogicalOperator &dop);
 	substrait::Rel *TransformIntersect(LogicalOperator &dop);
+	substrait::Rel *TransformCreateTable(LogicalOperator &dop);
 	static substrait::Rel *TransformDummyScan();
 	//! Methods to transform different LogicalGet Types (e.g., Table, Parquet)
 	//! To Substrait;

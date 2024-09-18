@@ -1391,6 +1391,33 @@ substrait::Rel *DuckDBToSubstrait::TransformIntersect(LogicalOperator &dop) {
 	return rel;
 }
 
+substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
+	auto rel = new substrait::Rel();
+	auto &create_table = dop.Cast<LogicalCreateTable>();
+	auto ddl = rel->mutable_ddl();
+	auto &create_info = create_table.info.get()->Base();
+	ddl->set_op(substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_CREATE);
+	ddl->set_object(substrait::DdlRel::DDL_OBJECT_TABLE);
+	auto named_object = ddl->mutable_named_object();
+	named_object->add_names(create_info.schema);
+	named_object->add_names(create_info.table);
+
+	auto schema = new substrait::NamedStruct();
+	auto type_info = new substrait::Type_Struct();
+	type_info->set_nullability(substrait::Type_Nullability_NULLABILITY_REQUIRED);
+	for (auto &name: create_info.columns.GetColumnNames()) {
+		schema->add_names(name);
+	}
+	for (auto &col_type : create_info.columns.GetColumnTypes()) {
+		auto s_type = DuckToSubstraitType(col_type, nullptr, false);
+		*type_info->add_types() = s_type;
+	}
+	schema->set_allocated_struct_(type_info);
+	ddl->set_allocated_table_schema(schema);
+
+	return rel;
+}
+
 substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 	switch (dop.type) {
 	case LogicalOperatorType::LOGICAL_FILTER:
@@ -1421,6 +1448,8 @@ substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 		return TransformIntersect(dop);
 	case LogicalOperatorType::LOGICAL_DUMMY_SCAN:
 		return TransformDummyScan();
+	case LogicalOperatorType::LOGICAL_CREATE_TABLE:
+		return TransformCreateTable(dop);
 	default:
 		throw InternalException(LogicalOperatorToString(dop.type));
 	}
@@ -1451,6 +1480,10 @@ substrait::RelRoot *DuckDBToSubstrait::TransformRootOp(LogicalOperator &dop) {
 			continue;
 		}
 		if (current_op->children.size() != 1) {
+			if (current_op->type == LogicalOperatorType::LOGICAL_CREATE_TABLE) {
+				// Create table nodes have multiple children, but we don't care about them
+				break;
+			}
 			throw InternalException("Root node has more than 1, or 0 children (%d) up to "
 			                        "reaching a projection node. Type %d",
 			                        current_op->children.size(), current_op->type);
@@ -1458,6 +1491,11 @@ substrait::RelRoot *DuckDBToSubstrait::TransformRootOp(LogicalOperator &dop) {
 		current_op = current_op->children[0].get();
 	}
 	root_rel->set_allocated_input(TransformOp(dop));
+	if (current_op->type != LogicalOperatorType::LOGICAL_PROJECTION) {
+		// No projection on top of the root, we don't have any aliases
+		return root_rel;
+	}
+
 	auto &dproj = current_op->Cast<LogicalProjection>();
 	if (!weird_scenario) {
 		for (auto &expression : dproj.expressions) {

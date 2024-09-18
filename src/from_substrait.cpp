@@ -11,6 +11,7 @@
 #include "duckdb/main/relation/aggregate_relation.hpp"
 #include "duckdb/main/relation/filter_relation.hpp"
 #include "duckdb/main/relation/order_relation.hpp"
+#include "duckdb/main/relation/create_table_relation.hpp"
 #include "duckdb/main/connection.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/common/exception.hpp"
@@ -621,6 +622,62 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformSetOp(const substrait::Rel &sop
 	return make_shared_ptr<SetOpRelation>(std::move(lhs), std::move(rhs), type);
 }
 
+shared_ptr<Relation> SubstraitToDuckDB::TransformDdlOp(const substrait::Rel &sop) {
+	auto &sddl = sop.ddl();
+	auto ddl_op = sddl.op();
+	if (ddl_op == substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_CREATE ||
+		ddl_op == substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_CREATE_OR_REPLACE) {
+		switch (sddl.object()) {
+			case substrait::DdlRel::DdlObject::DdlRel_DdlObject_DDL_OBJECT_TABLE: {
+				if (sddl.write_type_case() != substrait::DdlRel::WriteTypeCase::kNamedObject) {
+					throw NotImplementedException("Only NamedObject is supported in CreateTable");
+				}
+				std::cout << "Creating table1" << std::endl;
+				auto &nobj = sddl.named_object();
+				if (nobj.names_size() == 0) {
+					throw InvalidInputException("Named object must have at least one name");
+				}
+				auto table_idx = nobj.names_size() - 1;
+				unique_ptr<TableDescription> table_desc = make_uniq<TableDescription>();
+				table_desc->table = nobj.names(table_idx);
+				if (table_idx > 0) {
+					table_desc->schema = nobj.names(0);
+				}
+
+				std::cout << "Creating table2" << std::endl;
+				auto &col_names = sddl.table_schema().names();
+				auto col_types = sddl.table_schema().struct_().types();
+				if (col_names.size() != col_types.size()) {
+					throw NotImplementedException("Column names and types count do not match");
+				}
+				std::cout << "Creating table3" << std::endl;
+				vector<ColumnDefinition> column_definitions;
+				for (size_t i = 0; i < col_names.size(); i++) {
+					auto &scol_type = col_types[i];
+					auto type = SubstraitToDuckType(scol_type);
+					column_definitions.push_back(ColumnDefinition(col_names[i], type));
+				}
+				table_desc->columns = std::move(column_definitions);
+
+				std::cout << "Creating table4 " << table_desc->schema << std::endl;
+				shared_ptr<TableRelation> table = make_shared_ptr<TableRelation>(con.context, std::move(table_desc));
+				auto create_table_rel = table->CreateRel(table_desc->schema, table_desc->table, false);
+				std::cout << "Creating table5" << std::endl;
+				return create_table_rel;
+			}
+			case substrait::DdlRel::DdlObject::DdlRel_DdlObject_DDL_OBJECT_VIEW:
+				throw NotImplementedException("Only CreateTable is supported ");
+			default: {
+				throw NotImplementedException("Unsupported DDL object");
+			}
+		}
+	}
+	else
+	{
+		throw NotImplementedException("Unsupported DDL operation");
+	}
+}
+
 shared_ptr<Relation> SubstraitToDuckDB::TransformOp(const substrait::Rel &sop) {
 	switch (sop.rel_type_case()) {
 	case substrait::Rel::RelTypeCase::kJoin:
@@ -641,6 +698,8 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformOp(const substrait::Rel &sop) {
 		return TransformSortOp(sop);
 	case substrait::Rel::RelTypeCase::kSet:
 		return TransformSetOp(sop);
+	case substrait::Rel::RelTypeCase::kDdl:
+		return TransformDdlOp(sop);
 	default:
 		throw InternalException("Unsupported relation type " + to_string(sop.rel_type_case()));
 	}
