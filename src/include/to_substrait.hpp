@@ -52,6 +52,7 @@ private:
 	substrait::Rel *TransformComparisonJoin(LogicalOperator &dop);
 	substrait::Rel *TransformAggregateGroup(LogicalOperator &dop);
 	substrait::Rel *TransformGet(LogicalOperator &dop);
+	substrait::Rel *TransformExpressionGet(LogicalOperator &dop);
 	substrait::Rel *TransformCrossProduct(LogicalOperator &dop);
 	substrait::Rel *TransformUnion(LogicalOperator &dop);
 	substrait::Rel *TransformDistinct(LogicalOperator &dop);

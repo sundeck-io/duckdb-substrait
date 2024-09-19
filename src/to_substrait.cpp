@@ -1313,6 +1313,26 @@ substrait::Rel *DuckDBToSubstrait::TransformGet(LogicalOperator &dop) {
 	return get_rel;
 }
 
+substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) {
+	auto get_rel = new substrait::Rel();
+	auto &dget = dop.Cast<LogicalExpressionGet>();
+
+	auto sget = get_rel->mutable_read();
+	auto virtual_table = sget->mutable_virtual_table();
+
+	for (auto &row : dget.expressions) {
+		auto row_item = virtual_table->add_values();
+		for (auto &expr : row) {
+			auto s_expr = new substrait::Expression();
+			TransformExpr(*expr, *s_expr);
+			row_item->add_fields()->set_allocated_expression(s_expr);
+		}
+	}
+
+	return get_rel;
+}
+
+
 substrait::Rel *DuckDBToSubstrait::TransformCrossProduct(LogicalOperator &dop) {
 	auto rel = new substrait::Rel();
 	auto sub_cross_prod = rel->mutable_cross();
@@ -1394,18 +1414,12 @@ substrait::Rel *DuckDBToSubstrait::TransformIntersect(LogicalOperator &dop) {
 substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
 	auto rel = new substrait::Rel();
 	auto &create_table = dop.Cast<LogicalCreateTable>();
-	auto ddl = rel->mutable_ddl();
 	auto &create_info = create_table.info.get()->Base();
-	ddl->set_op(substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_CREATE);
-	ddl->set_object(substrait::DdlRel::DDL_OBJECT_TABLE);
-	auto named_object = ddl->mutable_named_object();
-	named_object->add_names(create_info.schema);
-	named_object->add_names(create_info.table);
 
 	auto schema = new substrait::NamedStruct();
 	auto type_info = new substrait::Type_Struct();
 	type_info->set_nullability(substrait::Type_Nullability_NULLABILITY_REQUIRED);
-	for (auto &name: create_info.columns.GetColumnNames()) {
+	for (auto &name : create_info.columns.GetColumnNames()) {
 		schema->add_names(name);
 	}
 	for (auto &col_type : create_info.columns.GetColumnTypes()) {
@@ -1413,7 +1427,37 @@ substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
 		*type_info->add_types() = s_type;
 	}
 	schema->set_allocated_struct_(type_info);
-	ddl->set_allocated_table_schema(schema);
+
+	if (create_table.children.size() == 0) {
+		// This is create table with schema
+		auto ddl = rel->mutable_ddl();
+		ddl->set_op(substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_CREATE);
+		ddl->set_object(substrait::DdlRel::DDL_OBJECT_TABLE);
+		ddl->set_allocated_table_schema(schema);
+
+		auto named_object = ddl->mutable_named_object();
+		named_object->add_names(create_info.schema);
+		named_object->add_names(create_info.table);
+		return rel;
+	}
+
+	// This is create table as select
+	substrait::Rel *input = nullptr;
+	switch (create_table.children[0]->type)
+	{
+	case LogicalOperatorType::LOGICAL_PROJECTION:
+		input = TransformProjection(*create_table.children[0]);
+		break;
+	default:
+		throw NotImplementedException("Create table with more than one child");
+	}
+	auto write = rel->mutable_write();
+	write->set_allocated_table_schema(schema);
+	write->set_allocated_input(input);
+	write->set_op(substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS);
+	auto named_object = write->mutable_named_table();
+	named_object->add_names(create_info.schema);
+	named_object->add_names(create_info.table);
 
 	return rel;
 }
@@ -1436,6 +1480,8 @@ substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 		return TransformAggregateGroup(dop);
 	case LogicalOperatorType::LOGICAL_GET:
 		return TransformGet(dop);
+	case LogicalOperatorType::LOGICAL_EXPRESSION_GET:
+		return TransformExpressionGet(dop);
 	case LogicalOperatorType::LOGICAL_CROSS_PRODUCT:
 		return TransformCrossProduct(dop);
 	case LogicalOperatorType::LOGICAL_UNION:
