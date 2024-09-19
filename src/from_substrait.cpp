@@ -632,37 +632,37 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformDdlOp(const substrait::Rel &sop
 				if (sddl.write_type_case() != substrait::DdlRel::WriteTypeCase::kNamedObject) {
 					throw NotImplementedException("Only NamedObject is supported in CreateTable");
 				}
-				std::cout << "Creating table1" << std::endl;
 				auto &nobj = sddl.named_object();
 				if (nobj.names_size() == 0) {
 					throw InvalidInputException("Named object must have at least one name");
 				}
 				auto table_idx = nobj.names_size() - 1;
-				unique_ptr<TableDescription> table_desc = make_uniq<TableDescription>();
-				table_desc->table = nobj.names(table_idx);
+				auto table_name = nobj.names(table_idx);
+				string schema_name;
 				if (table_idx > 0) {
-					table_desc->schema = nobj.names(0);
+					schema_name = nobj.names(0);
 				}
 
-				std::cout << "Creating table2" << std::endl;
 				auto &col_names = sddl.table_schema().names();
 				auto col_types = sddl.table_schema().struct_().types();
 				if (col_names.size() != col_types.size()) {
 					throw NotImplementedException("Column names and types count do not match");
 				}
-				std::cout << "Creating table3" << std::endl;
 				vector<ColumnDefinition> column_definitions;
 				for (size_t i = 0; i < col_names.size(); i++) {
 					auto &scol_type = col_types[i];
 					auto type = SubstraitToDuckType(scol_type);
 					column_definitions.push_back(ColumnDefinition(col_names[i], type));
 				}
+				unique_ptr<TableDescription> table_desc = make_uniq<TableDescription>();
 				table_desc->columns = std::move(column_definitions);
+				table_desc->table = table_name;
+				table_desc->schema = schema_name;
 
-				std::cout << "Creating table4 " << table_desc->schema << std::endl;
+				std::cout << "Creating table1 " << schema_name << " " << table_name << std::endl;
 				shared_ptr<TableRelation> table = make_shared_ptr<TableRelation>(con.context, std::move(table_desc));
-				auto create_table_rel = table->CreateRel(table_desc->schema, table_desc->table, false);
-				std::cout << "Creating table5" << std::endl;
+				auto create_table_rel = table->CreateRel(schema_name, table_name, false);
+				std::cout << "Creating table2" << std::endl;
 				return create_table_rel;
 			}
 			case substrait::DdlRel::DdlObject::DdlRel_DdlObject_DDL_OBJECT_VIEW:
