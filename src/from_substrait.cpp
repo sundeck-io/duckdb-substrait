@@ -787,6 +787,9 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformRootOp(const substrait::RelRoot
 		}
 	}
 
+	if (sop.input().rel_type_case() == substrait::Rel::RelTypeCase::kWrite) {
+		return child;
+	}
 	return make_shared_ptr<ProjectionRelation>(child, std::move(expressions), aliases);
 }
 
