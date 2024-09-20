@@ -1325,7 +1325,8 @@ substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) 
 		for (auto &expr : row) {
 			auto s_expr = new substrait::Expression();
 			TransformExpr(*expr, *s_expr);
-			row_item->add_fields()->set_allocated_expression(s_expr);
+			*row_item->add_fields() = s_expr->literal();
+			delete s_expr;
 		}
 	}
 
