@@ -680,24 +680,29 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformDdlOp(const substrait::Rel &sop
 
 shared_ptr<Relation> SubstraitToDuckDB::TransformWriteOp(const substrait::Rel &sop) {
 	auto &swrite = sop.write();
+	auto &nobj = swrite.named_table();
+	if (nobj.names_size() == 0) {
+		throw InvalidInputException("Named object must have at least one name");
+	}
+	auto table_idx = nobj.names_size() - 1;
+	auto table_name = nobj.names(table_idx);
+	string schema_name;
+	if (table_idx > 0) {
+		schema_name = nobj.names(0);
+	}
+
+	auto input = TransformOp(swrite.input());
 
 	switch (swrite.op())
 	{
 	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
-		auto &nobj = swrite.named_table();
-		if (nobj.names_size() == 0) {
-			throw InvalidInputException("Named object must have at least one name");
-		}
-		auto table_idx = nobj.names_size() - 1;
-		auto table_name = nobj.names(table_idx);
-		string schema_name;
-		if (table_idx > 0) {
-			schema_name = nobj.names(0);
-		}
 
-		auto input = TransformOp(swrite.input());
 		auto create_table_rel = input->CreateRel(schema_name, table_name, false);
 		return create_table_rel;
+	}
+	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_INSERT: {
+		auto insert_rel = input->InsertRel(schema_name, table_name);
+		return insert_rel;
 	}
 	default:
 		throw NotImplementedException("Unsupported write operation");

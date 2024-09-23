@@ -1463,6 +1463,50 @@ substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
 	return rel;
 }
 
+substrait::Rel *DuckDBToSubstrait::TransformInsertTable(LogicalOperator &dop) {
+	auto rel = new substrait::Rel();
+	auto &insert_table = dop.Cast<LogicalInsert>();
+	auto &table = insert_table.table;
+	auto writeRel = rel->mutable_write();
+	writeRel->set_op(substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_INSERT);
+	writeRel->set_output(substrait::WriteRel::OUTPUT_MODE_NO_OUTPUT);
+	// set named_table
+	auto named_table = writeRel->mutable_named_table();
+	named_table->add_names(table.schema.name);
+	named_table->add_names(table.name);
+
+	// set table_schema
+	auto schema = new substrait::NamedStruct();
+	for (auto &name : table.GetColumns().GetColumnNames()) {
+		schema->add_names(name);
+	}
+	auto type_info = new substrait::Type_Struct();
+	type_info->set_nullability(substrait::Type_Nullability_NULLABILITY_REQUIRED);
+	for (auto &col_type : table.GetColumns().GetColumnTypes()) {
+		auto s_type = DuckToSubstraitType(col_type, nullptr, false);
+		*type_info->add_types() = s_type;
+	}
+	schema->set_allocated_struct_(type_info);
+
+	if (insert_table.children.size() == 0) {
+		// This is insert table with values
+		// TODO: Set input relation
+		return rel;
+	}
+	// This is create table as select
+	substrait::Rel *input = nullptr;
+	switch (insert_table.children[0]->type)
+	{
+		case LogicalOperatorType::LOGICAL_PROJECTION:
+			input = TransformProjection(*insert_table.children[0]);
+		break;
+		default:
+			throw NotImplementedException("Create table with more than one child");
+		}
+	writeRel->set_allocated_input(input);
+	return rel;
+}
+
 substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 	switch (dop.type) {
 	case LogicalOperatorType::LOGICAL_FILTER:
@@ -1497,6 +1541,8 @@ substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 		return TransformDummyScan();
 	case LogicalOperatorType::LOGICAL_CREATE_TABLE:
 		return TransformCreateTable(dop);
+	case LogicalOperatorType::LOGICAL_INSERT:
+		return TransformInsertTable(dop);
 	default:
 		throw InternalException(LogicalOperatorToString(dop.type));
 	}
@@ -1507,8 +1553,24 @@ static bool IsSetOperation(const LogicalOperator &op) {
 	       op.type == LogicalOperatorType::LOGICAL_INTERSECT;
 }
 
+static bool IsWriteORUpdateOperation(const LogicalOperator &op) {
+	switch (op.type)
+	{
+	case	LogicalOperatorType::LOGICAL_CREATE_TABLE:
+	case	LogicalOperatorType::LOGICAL_INSERT:
+	case	LogicalOperatorType::LOGICAL_DELETE:
+	case	LogicalOperatorType::LOGICAL_UPDATE:
+			return true;
+	}
+	return false;
+}
+
 substrait::RelRoot *DuckDBToSubstrait::TransformRootOp(LogicalOperator &dop) {
 	auto root_rel = new substrait::RelRoot();
+	if (IsWriteORUpdateOperation(dop)) {
+		root_rel->set_allocated_input(TransformOp(dop));
+		return root_rel;
+	}
 	LogicalOperator *current_op = &dop;
 	bool weird_scenario = current_op->type == LogicalOperatorType::LOGICAL_PROJECTION &&
 	                      current_op->children[0]->type == LogicalOperatorType::LOGICAL_TOP_N;
