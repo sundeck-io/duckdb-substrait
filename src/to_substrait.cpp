@@ -1456,9 +1456,9 @@ substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
 	write->set_allocated_table_schema(schema);
 	write->set_allocated_input(input);
 	write->set_op(substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS);
-	auto named_object = write->mutable_named_table();
-	named_object->add_names(create_info.schema);
-	named_object->add_names(create_info.table);
+	auto named_table = write->mutable_named_table();
+	named_table->add_names(create_info.schema);
+	named_table->add_names(create_info.table);
 
 	return rel;
 }

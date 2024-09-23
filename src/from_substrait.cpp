@@ -681,8 +681,7 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformDdlOp(const substrait::Rel &sop
 shared_ptr<Relation> SubstraitToDuckDB::TransformWriteOp(const substrait::Rel &sop) {
 	auto &swrite = sop.write();
 
-	switch (swrite.op())
-	{
+	switch (swrite.op()) {
 	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
 		auto &nobj = swrite.named_table();
 		if (nobj.names_size() == 0) {
@@ -696,8 +695,7 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformWriteOp(const substrait::Rel &s
 		}
 
 		auto input = TransformOp(swrite.input());
-		auto create_table_rel = input->CreateRel(schema_name, table_name, false);
-		return create_table_rel;
+		return input->CreateRel(schema_name, table_name, false);
 	}
 	default:
 		throw NotImplementedException("Unsupported write operation");
@@ -788,7 +786,16 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformRootOp(const substrait::RelRoot
 	}
 
 	if (sop.input().rel_type_case() == substrait::Rel::RelTypeCase::kWrite) {
-		return child;
+		auto write = sop.input().write();
+		switch (write.op()) {
+		case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
+			const auto create_table = static_cast<CreateTableRelation *>(child.get());
+			auto proj = make_shared_ptr<ProjectionRelation>(create_table->child, std::move(expressions), aliases);
+			return proj->CreateRel(create_table->schema_name, create_table->table_name, false);
+		}
+		default:
+			return child;
+		}
 	}
 	return make_shared_ptr<ProjectionRelation>(child, std::move(expressions), aliases);
 }
