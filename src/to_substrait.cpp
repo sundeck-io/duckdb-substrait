@@ -1313,6 +1313,22 @@ substrait::Rel *DuckDBToSubstrait::TransformGet(LogicalOperator &dop) {
 	return get_rel;
 }
 
+static substrait::Expression_Literal GetLiteralFromSubstraitExpression(const substrait::Expression &expr) {
+	substrait::Expression_Literal literal_field;
+	switch (expr.rex_type_case())
+	{
+	case substrait::Expression::kLiteral:
+		literal_field = expr.literal();
+		break;
+	case substrait::Expression::kCast:
+		literal_field = GetLiteralFromSubstraitExpression(expr.cast().input());
+		break;
+	default:
+		throw NotImplementedException("Unimplemented type of expression to fetch literal");
+	}
+	return literal_field;
+}
+
 substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) {
 	auto get_rel = new substrait::Rel();
 	auto &dget = dop.Cast<LogicalExpressionGet>();
@@ -1325,11 +1341,10 @@ substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) 
 		for (auto &expr : row) {
 			auto s_expr = new substrait::Expression();
 			TransformExpr(*expr, *s_expr);
-			*row_item->add_fields() = s_expr->literal();
+			*row_item->add_fields() = GetLiteralFromSubstraitExpression(*s_expr);
 			delete s_expr;
 		}
 	}
-
 	return get_rel;
 }
 

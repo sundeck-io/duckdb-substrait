@@ -55,7 +55,7 @@ TEST_CASE("Test C Get and To Json-Substrait API", "[substrait-api]") {
   REQUIRE_THROWS(con.FromSubstraitJSON("this is not valid"));
 }
 
-TEST_CASE("Test C Get and To Substrait API for Insert as select", "[substrait-api]") {
+TEST_CASE("Test C Get and To Substrait API for Insert from select", "[substrait-api]") {
     DuckDB db(nullptr);
     SubstraitExtension substrait_extension;
     substrait_extension.Load(db);
@@ -77,7 +77,7 @@ TEST_CASE("Test C Get and To Substrait API for Insert as select", "[substrait-ap
     REQUIRE(CHECK_COLUMN(result, 0, {4}));
 }
 
-TEST_CASE("Test C Get and To Json-Substrait API for Insert as select", "[substrait-api]") {
+TEST_CASE("Test C Get and To Json-Substrait API for Insert from select", "[substrait-api]") {
     DuckDB db(nullptr);
     SubstraitExtension substrait_extension;
     substrait_extension.Load(db);
@@ -97,4 +97,64 @@ TEST_CASE("Test C Get and To Json-Substrait API for Insert as select", "[substra
 
     // number of rows inserted are expected as result of insert
     REQUIRE(CHECK_COLUMN(result, 0, {4}));
+}
+
+TEST_CASE("Test C Get and To Substrait API for Insert from virtual table", "[substrait-api]") {
+    DuckDB db(nullptr);
+    SubstraitExtension substrait_extension;
+    substrait_extension.Load(db);
+    Connection con(db);
+    con.EnableQueryVerification();
+
+    REQUIRE_NO_FAIL(con.Query("CREATE TABLE t1(i INTEGER)"));
+
+    auto proto = con.GetSubstrait("INSERT INTO t1 VALUES (1), (2), (3), (NULL)");
+    auto result = con.FromSubstrait(proto);
+    // number of rows inserted are expected as result of insert
+    REQUIRE(CHECK_COLUMN(result, 0, {4}));
+}
+
+TEST_CASE("Test C Get and To JSON-Substrait API for Insert from virtual table", "[substrait-api]") {
+    DuckDB db(nullptr);
+    SubstraitExtension substrait_extension;
+    substrait_extension.Load(db);
+    Connection con(db);
+    con.EnableQueryVerification();
+
+    REQUIRE_NO_FAIL(con.Query("CREATE TABLE t1(i INTEGER)"));
+
+    auto json = con.GetSubstraitJSON("INSERT INTO t1 VALUES (1), (2), (3), (NULL)");
+    auto result = con.FromSubstraitJSON(json);
+    // number of rows inserted are expected as result of insert
+    REQUIRE(CHECK_COLUMN(result, 0, {4}));
+}
+
+TEST_CASE("Test C Get and To Substrait API for Select from virtual table", "[substrait-api]") {
+    DuckDB db(nullptr);
+    SubstraitExtension substrait_extension;
+    substrait_extension.Load(db);
+    Connection con(db);
+    con.EnableQueryVerification();
+
+
+    auto json = con.GetSubstrait("SELECT * FROM (VALUES (1, 2), (3, 4))");
+    auto result = con.FromSubstrait(json);
+    // number of rows selected are expected as result of insert
+    REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
+    REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
+}
+
+TEST_CASE("Test C Get and To JSON-Substrait API for Select from virtual table", "[substrait-api]") {
+    DuckDB db(nullptr);
+    SubstraitExtension substrait_extension;
+    substrait_extension.Load(db);
+    Connection con(db);
+    con.EnableQueryVerification();
+
+
+    auto json = con.GetSubstraitJSON("SELECT * FROM (VALUES (1, 2), (3, 4))");
+    auto result = con.FromSubstraitJSON(json);
+    // number of rows selected are expected as result of insert
+    REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
+    REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
 }
