@@ -45,3 +45,29 @@ TEST_CASE("Test C Get and To Json-Substrait API", "[substrait-api]") {
 
   REQUIRE_THROWS(con.FromSubstraitJSON("this is not valid"));
 }
+
+TEST_CASE("Test C Get and To Substrait API for Select from virtual table", "[substrait-api]") {
+    DuckDB db(nullptr);
+    Connection con(db);
+    con.EnableQueryVerification();
+
+
+    auto json = con.GetSubstrait("SELECT * FROM (VALUES (1, 2), (3, 4))");
+    auto result = con.FromSubstrait(json);
+    // number of rows selected are expected as result of insert
+    REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
+    REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
+}
+
+TEST_CASE("Test C Get and To JSON-Substrait API for Select from virtual table", "[substrait-api]") {
+    DuckDB db(nullptr);
+    Connection con(db);
+    con.EnableQueryVerification();
+
+
+    auto json = con.GetSubstraitJSON("SELECT * FROM (VALUES (1, 2), (3, 4))");
+    auto result = con.FromSubstraitJSON(json);
+    // number of rows selected are expected as result of insert
+    REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
+    REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
+}
