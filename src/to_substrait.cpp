@@ -1,23 +1,25 @@
 #include "to_substrait.hpp"
 
+#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/enums/expression_type.hpp"
 #include "duckdb/common/types/value.hpp"
+#include "duckdb/execution/index/art/art_key.hpp"
 #include "duckdb/function/table/table_scan.hpp"
+#include "duckdb/parser/constraints/not_null_constraint.hpp"
 #include "duckdb/planner/expression/list.hpp"
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
 #include "duckdb/planner/joinside.hpp"
 #include "duckdb/planner/operator/list.hpp"
+#include "duckdb/planner/operator/logical_set_operation.hpp"
 #include "duckdb/planner/table_filter.hpp"
 #include "duckdb/storage/statistics/base_statistics.hpp"
-#include "duckdb/catalog/catalog_entry/duck_table_entry.hpp"
-#include "duckdb/planner/operator/logical_set_operation.hpp"
 #include "google/protobuf/util/json_util.h"
 #include "substrait/algebra.pb.h"
 #include "substrait/plan.pb.h"
-#include "duckdb/parser/constraints/not_null_constraint.hpp"
-#include "duckdb/execution/index/art/art_key.hpp"
+
+#include <duckdb/parser/parsed_data/drop_info.hpp>
 
 namespace duckdb {
 const std::unordered_map<std::string, std::string> DuckDBToSubstrait::function_names_remap = {
@@ -1313,6 +1315,22 @@ substrait::Rel *DuckDBToSubstrait::TransformGet(LogicalOperator &dop) {
 	return get_rel;
 }
 
+substrait::Expression_Literal DuckDBToSubstrait::ToExpressionLiteral(const substrait::Expression &expr) {
+	substrait::Expression_Literal literal_field;
+	switch (expr.rex_type_case())
+	{
+	case substrait::Expression::kLiteral:
+		literal_field = expr.literal();
+		break;
+	case substrait::Expression::kCast:
+		literal_field = ToExpressionLiteral(expr.cast().input());
+		break;
+	default:
+		throw NotImplementedException("Unimplemented type of expression to fetch literal");
+	}
+	return literal_field;
+}
+
 substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) {
 	auto get_rel = new substrait::Rel();
 	auto &dget = dop.Cast<LogicalExpressionGet>();
@@ -1325,7 +1343,7 @@ substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) 
 		for (auto &expr : row) {
 			auto s_expr = new substrait::Expression();
 			TransformExpr(*expr, *s_expr);
-			*row_item->add_fields() = s_expr->literal();
+			*row_item->add_fields() = ToExpressionLiteral(*s_expr);
 			delete s_expr;
 		}
 	}
@@ -1463,6 +1481,39 @@ substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
 	return rel;
 }
 
+substrait::Rel *DuckDBToSubstrait::TransformDropTable(LogicalOperator &dop) {
+	auto rel = new substrait::Rel();
+	auto &drop_table = dop.Cast<LogicalSimple>();
+	auto &drop_info = drop_table.info.get()->Cast<DropInfo>();
+
+	auto schema = new substrait::NamedStruct();
+	auto type_info = new substrait::Type_Struct();
+	type_info->set_nullability(substrait::Type_Nullability_NULLABILITY_REQUIRED);
+	schema->set_allocated_struct_(type_info);
+
+	auto ddl = rel->mutable_ddl();
+	switch (drop_info.type) {
+	case CatalogType::TABLE_ENTRY:
+		ddl->set_object(substrait::DdlRel::DDL_OBJECT_TABLE);
+		break;
+	case CatalogType::VIEW_ENTRY:
+		ddl->set_object(substrait::DdlRel::DDL_OBJECT_VIEW);
+	default:
+		throw NotImplementedException("Drop type not implemented");
+	}
+	if (drop_info.if_not_found == OnEntryNotFound::THROW_EXCEPTION) {
+		ddl->set_op(substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_DROP_IF_EXIST);
+	} else {
+		ddl->set_op(substrait::DdlRel::DdlOp::DdlRel_DdlOp_DDL_OP_DROP);
+	}
+	ddl->set_allocated_table_schema(schema);
+
+	auto named_object = ddl->mutable_named_object();
+	named_object->add_names(drop_info.schema);
+	named_object->add_names(drop_info.name);
+	return rel;
+}
+
 substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 	switch (dop.type) {
 	case LogicalOperatorType::LOGICAL_FILTER:
@@ -1497,6 +1548,8 @@ substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 		return TransformDummyScan();
 	case LogicalOperatorType::LOGICAL_CREATE_TABLE:
 		return TransformCreateTable(dop);
+	case LogicalOperatorType::LOGICAL_DROP:
+		return TransformDropTable(dop);
 	default:
 		throw InternalException(LogicalOperatorToString(dop.type));
 	}

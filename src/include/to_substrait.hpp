@@ -39,6 +39,8 @@ private:
 	static vector<string> DepthFirstNames(const LogicalType &type);
 	static void DepthFirstNamesRecurse(vector<string> &names, const LogicalType &type);
 
+        static substrait::Expression_Literal ToExpressionLiteral(const substrait::Expression &expr);
+
 	//! Transforms Relation Root
 	substrait::RelRoot *TransformRootOp(LogicalOperator &dop);
 
@@ -59,7 +61,8 @@ private:
 	substrait::Rel *TransformExcept(LogicalOperator &dop);
 	substrait::Rel *TransformIntersect(LogicalOperator &dop);
 	substrait::Rel *TransformCreateTable(LogicalOperator &dop);
-	static substrait::Rel *TransformDummyScan();
+        substrait::Rel *TransformDropTable(LogicalOperator &dop);
+        static substrait::Rel *TransformDummyScan();
 	//! Methods to transform different LogicalGet Types (e.g., Table, Parquet)
 	//! To Substrait;
 	void TransformTableScanToSubstrait(LogicalGet &dget, substrait::ReadRel *sget) const;
