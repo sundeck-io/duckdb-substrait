@@ -13,8 +13,6 @@ using namespace std;
 
 TEST_CASE("Test C Get and To Substrait API", "[substrait-api]") {
   DuckDB db(nullptr);
-  SubstraitExtension substrait_extension;
-  substrait_extension.Load(db);
   Connection con(db);
   con.EnableQueryVerification();
   // create the database
@@ -34,8 +32,6 @@ TEST_CASE("Test C Get and To Substrait API", "[substrait-api]") {
 
 TEST_CASE("Test C Get and To Json-Substrait API", "[substrait-api]") {
   DuckDB db(nullptr);
-  SubstraitExtension substrait_extension;
-  substrait_extension.Load(db);
   Connection con(db);
   con.EnableQueryVerification();
   // create the database
