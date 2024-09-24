@@ -38,6 +38,7 @@ private:
 	//! In case of struct types we might we do DFS to get all names
 	static vector<string> DepthFirstNames(const LogicalType &type);
 	static void DepthFirstNamesRecurse(vector<string> &names, const LogicalType &type);
+	static substrait::Expression_Literal ToExpressionLiteral(const substrait::Expression &expr);
 
 	//! Transforms Relation Root
 	substrait::RelRoot *TransformRootOp(LogicalOperator &dop);
@@ -57,6 +58,8 @@ private:
 	substrait::Rel *TransformDistinct(LogicalOperator &dop);
 	substrait::Rel *TransformExcept(LogicalOperator &dop);
 	substrait::Rel *TransformIntersect(LogicalOperator &dop);
+	substrait::Rel *TransformExpressionGet(LogicalOperator &dop);
+	substrait::Rel *TransformCreateTable(LogicalOperator &dop);
 	static substrait::Rel *TransformDummyScan();
 	//! Methods to transform different LogicalGet Types (e.g., Table, Parquet)
 	//! To Substrait;
