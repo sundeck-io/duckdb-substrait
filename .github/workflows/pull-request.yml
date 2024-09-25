@@ -1,0 +1,9 @@
+name: PR Build Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  call-python-test:
+    uses: ./.github/workflows/python.yml
