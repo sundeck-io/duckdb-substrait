@@ -1381,7 +1381,8 @@ substrait::Rel *DuckDBToSubstrait::TransformDistinct(LogicalOperator &dop) {
 		set_op->set_op(substrait::SetRel_SetOp::SetRel_SetOp_SET_OP_INTERSECTION_PRIMARY);
 		break;
 	default:
-		throw NotImplementedException("Found unexpected child type in Distinct operator");
+		throw NotImplementedException("Found unexpected child type in Distinct operator " +
+			LogicalOperatorToString(set_operation_p->type));
 	}
 	auto &set_operation = set_operation_p->Cast<LogicalSetOperation>();
 
