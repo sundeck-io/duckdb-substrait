@@ -426,7 +426,7 @@ void DuckDBToSubstrait::TransformBetweenExpression(Expression &dexpr, substrait:
 	args_types.emplace_back(DuckToSubstraitType(dcomp.lower->return_type));
 	args_types.emplace_back(DuckToSubstraitType(dcomp.upper->return_type));
 	scalar_fun->set_function_reference(RegisterFunction("between", args_types));
-	
+
 	auto sarg = scalar_fun->add_arguments();
 	TransformExpr(*dcomp.input, *sarg->mutable_value(), 0);
 	sarg = scalar_fun->add_arguments();
@@ -1382,7 +1382,7 @@ substrait::Rel *DuckDBToSubstrait::TransformDistinct(LogicalOperator &dop) {
 		break;
 	default:
 		throw NotImplementedException("Found unexpected child type in Distinct operator " +
-			LogicalOperatorToString(set_operation_p->type));
+		                              LogicalOperatorToString(set_operation_p->type));
 	}
 	auto &set_operation = set_operation_p->Cast<LogicalSetOperation>();
 

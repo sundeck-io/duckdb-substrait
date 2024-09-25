@@ -46,17 +46,14 @@ TEST_CASE("Test C Get and To Json-Substrait API", "[substrait-api]") {
   REQUIRE_THROWS(con.FromSubstraitJSON("this is not valid"));
 }
 
-TEST_CASE("Test C SelectFromValues with Substrait API", "[substrait-api]") {
-  DuckDB db(nullptr);
-  Connection con(db);
-  con.EnableQueryVerification();
+TEST_CASE("Test C SelectFromValues with JSON-Substrait API", "[substrait-api]") {
+	DuckDB db(nullptr);
+	Connection con(db);
 
-  auto json = con.GetSubstraitJSON("SELECT 13 as id, 17 as age");
-
-  auto result = con.FromSubstraitJSON(json);
-
-  REQUIRE(CHECK_COLUMN(result, 0, {13}));
-  REQUIRE(CHECK_COLUMN(result, 1, {17}));
+	auto json = con.GetSubstraitJSON("SELECT * FROM (VALUES (1, 2), (3, 4))");
+	auto result = con.FromSubstraitJSON(json);
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
+	REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
 }
 
 TEST_CASE("Test C CTAS Basic with Substrait API", "[substrait-api]") {
@@ -78,6 +75,15 @@ TEST_CASE("Test C CTAS Basic with Substrait API", "[substrait-api]") {
   REQUIRE(CHECK_COLUMN(result, 1, {25, 21}));
 }
 
+duckdb::unique_ptr<QueryResult> ExecuteViaSubstrait(Connection &con, const string &sql) {
+  auto proto = con.GetSubstrait(sql);
+  return con.FromSubstrait(proto);
+}
+
+duckdb::unique_ptr<QueryResult> ExecuteViaSubstraitJSON(Connection &con, const string &sql) {
+  auto json_str = con.GetSubstraitJSON(sql);
+  return con.FromSubstraitJSON(json_str);
+}
 
 void CreateEmployeeTable(Connection& con) {
 	REQUIRE_NO_FAIL(con.Query("CREATE TABLE employees ("
@@ -121,12 +127,13 @@ TEST_CASE("Test C CTAS Select columns with Substrait API", "[substrait-api]") {
 
 	CreateEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE employee_salaries AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE employee_salaries AS "
 		"SELECT name, salary FROM employees"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from employee_salaries"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from employee_salaries");
+	REQUIRE(CHECK_COLUMN(result, 0, {"John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Black"}));
+	REQUIRE(CHECK_COLUMN(result, 1, {120000, 80000, 50000, 95000, 60000}));
 }
 
 TEST_CASE("Test C CTAS Filter with Substrait API", "[substrait-api]") {
@@ -135,13 +142,16 @@ TEST_CASE("Test C CTAS Filter with Substrait API", "[substrait-api]") {
 
 	CreateEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE filtered_employees AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE filtered_employees AS "
 		"SELECT * FROM employees "
 		"WHERE salary > 80000;"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from filtered_employees"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from filtered_employees");
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 4}));
+	REQUIRE(CHECK_COLUMN(result, 1, {"John Doe", "Bob Brown"}));
+	REQUIRE(CHECK_COLUMN(result, 2, {1, 3}));
+	REQUIRE(CHECK_COLUMN(result, 3, {120000, 95000}));
 }
 
 TEST_CASE("Test C CTAS Case_When with Substrait API", "[substrait-api]") {
@@ -150,18 +160,19 @@ TEST_CASE("Test C CTAS Case_When with Substrait API", "[substrait-api]") {
 
 	CreateEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE categorized_employees AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE categorized_employees AS "
 		"SELECT name, "
 		"CASE "
 			"WHEN salary > 100000 THEN 'High' "
-			"WHEN salary BETWEEN 50000 AND 100000 THEN 'Medium' "
+			"WHEN salary BETWEEN 60000 AND 100000 THEN 'Medium' "
 			"ELSE 'Low' "
 		"END AS salary_category "
 		"FROM employees"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from categorized_employees"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from categorized_employees");
+	REQUIRE(CHECK_COLUMN(result, 0, {"John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Black"}));
+	REQUIRE(CHECK_COLUMN(result, 1, {"High", "Medium", "Low", "Medium", "Medium"}));
 }
 
 TEST_CASE("Test C CTAS OrderBy with Substrait API", "[substrait-api]") {
@@ -170,13 +181,16 @@ TEST_CASE("Test C CTAS OrderBy with Substrait API", "[substrait-api]") {
 
 	CreateEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE ordered_employees AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE ordered_employees AS "
 		"SELECT * FROM employees "
 		"ORDER BY salary DESC"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from ordered_employees"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from ordered_employees");
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 4, 2, 5, 3}));
+	REQUIRE(CHECK_COLUMN(result, 1, {"John Doe", "Bob Brown", "Jane Smith", "Charlie Black", "Alice Johnson"}));
+	REQUIRE(CHECK_COLUMN(result, 2, {1, 3, 2, 2, 1}));
+	REQUIRE(CHECK_COLUMN(result, 3, {120000, 95000, 80000, 60000, 50000}));
 }
 
 TEST_CASE("Test C CTAS SubQuery with Substrait API", "[substrait-api]") {
@@ -185,32 +199,34 @@ TEST_CASE("Test C CTAS SubQuery with Substrait API", "[substrait-api]") {
 
 	CreateEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE high_salary_employees AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE high_salary_employees AS "
 		"SELECT * "
 		"FROM ( "
 			"SELECT employee_id, name, salary "
 			"FROM employees "
 			"WHERE salary > 100000)"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from high_salary_employees"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from high_salary_employees");
+	REQUIRE(CHECK_COLUMN(result, 0, {1}));
+	REQUIRE(CHECK_COLUMN(result, 1, {"John Doe"}));
+	REQUIRE(CHECK_COLUMN(result, 2, {120000}));
 }
 
 TEST_CASE("Test C CTAS Distinct with Substrait API", "[substrait-api]") {
-	SKIP_TEST("unsupported child type in Distinct operator");  // TODO fix TransformDistinct
+	SKIP_TEST("SKIP: Distinct operator has unsupported child type");  // TODO fix TransformDistinct
 	return;
 
 	DuckDB db(nullptr);
 	Connection con(db);
 
 	CreateEmployeeTable(con);
-	auto proto = con.GetSubstrait("CREATE TABLE unique_departments AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE unique_departments AS "
 		"SELECT DISTINCT department_id FROM employees"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from unique_departments"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from unique_departments");
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 2, 3}));
 }
 
 TEST_CASE("Test C CTAS Aggregation with Substrait API", "[substrait-api]") {
@@ -219,14 +235,15 @@ TEST_CASE("Test C CTAS Aggregation with Substrait API", "[substrait-api]") {
 
 	CreateEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE department_summary AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE department_summary AS "
 		"SELECT department_id, COUNT(*) AS employee_count "
 		"FROM employees "
 		"GROUP BY department_id"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from department_summary"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from department_summary");
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 2, 3}));
+	REQUIRE(CHECK_COLUMN(result, 1, {2, 2, 1}));
 }
 
 TEST_CASE("Test C CTAS Join with Substrait API", "[substrait-api]") {
@@ -236,15 +253,17 @@ TEST_CASE("Test C CTAS Join with Substrait API", "[substrait-api]") {
 	CreateEmployeeTable(con);
 	CreateDepartmentsTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE employee_departments AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE employee_departments AS "
 		"SELECT e.employee_id, e.name, d.department_name "
 		"FROM employees e "
 		"JOIN departments d "
 		"ON e.department_id = d.department_id"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from employee_departments"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from employee_departments");
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 2, 3, 4, 5}));
+	REQUIRE(CHECK_COLUMN(result, 1, {"John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Black"}));
+	REQUIRE(CHECK_COLUMN(result, 2, {"HR", "Engineering", "HR", "Finance", "Engineering"}));
 }
 
 TEST_CASE("Test C CTAS Union with Substrait API", "[substrait-api]") {
@@ -254,14 +273,17 @@ TEST_CASE("Test C CTAS Union with Substrait API", "[substrait-api]") {
 	CreateEmployeeTable(con);
 	CreatePartTimeEmployeeTable(con);
 
-	auto proto = con.GetSubstrait("CREATE TABLE all_employees AS "
+	ExecuteViaSubstraitJSON(con, "CREATE TABLE all_employees AS "
 		"SELECT employee_id, name, department_id, salary "
 		"FROM employees "
 		"UNION "
 		"SELECT id, name, department_id, hourly_rate * 2000 AS salary "
-		"FROM part_time_employees"
+		"FROM part_time_employees "
+		"ORDER BY employee_id"
 	);
-	auto result = con.FromSubstrait(proto);
 
-	REQUIRE_NO_FAIL(con.Query("SELECT * from all_employees"));
+	auto result = ExecuteViaSubstrait(con, "SELECT * from all_employees");
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 2, 3, 4, 5, 6, 7}));
+	REQUIRE(CHECK_COLUMN(result, 1, {"John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Black", "David White", "Eve Green"}));
+	REQUIRE(CHECK_COLUMN(result, 2, {1, 2, 1, 3, 2, 1, 2}));
 }
