@@ -26,6 +26,7 @@
 #include "substrait/plan.pb.h"
 
 #include "duckdb/main/relation/create_table_relation.hpp"
+#include <duckdb/main/relation/delete_relation.hpp>
 #include "duckdb/main/relation/table_relation.hpp"
 
 namespace duckdb {
@@ -623,22 +624,25 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformSetOp(const substrait::Rel &sop
 
 shared_ptr<Relation> SubstraitToDuckDB::TransformWriteOp(const substrait::Rel &sop) {
 	auto &swrite = sop.write();
+	auto &nobj = swrite.named_table();
+	if (nobj.names_size() == 0) {
+		throw InvalidInputException("Named object must have at least one name");
+	}
+	auto table_idx = nobj.names_size() - 1;
+	auto table_name = nobj.names(table_idx);
+	string schema_name;
+	if (table_idx > 0) {
+		schema_name = nobj.names(0);
+	}
 
+	auto input = TransformOp(swrite.input());
 	switch (swrite.op()) {
-	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
-		auto &nobj = swrite.named_table();
-		if (nobj.names_size() == 0) {
-			throw InvalidInputException("Named object must have at least one name");
-		}
-		auto table_idx = nobj.names_size() - 1;
-		auto table_name = nobj.names(table_idx);
-		string schema_name;
-		if (table_idx > 0) {
-			schema_name = nobj.names(0);
-		}
-
-		auto input = TransformOp(swrite.input());
+	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS:
 		return input->CreateRel(schema_name, table_name);
+	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_DELETE: {
+		auto filter = std::move(input.get()->Cast<FilterRelation>());
+		auto context = filter.child->Cast<TableRelation>().context;
+		return make_shared_ptr<DeleteRelation>(filter.context, std::move(filter.condition), schema_name, table_name);
 	}
 	default:
 		throw NotImplementedException("Unsupported write operation" + to_string(swrite.op()));
