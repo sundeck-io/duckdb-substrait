@@ -17,23 +17,6 @@ def test_roundtrip_substrait(require):
     pd.testing.assert_series_equal(query_result.df()["i"], expected)
 
 
-def test_select_with_values(require):
-    connection = require('substrait')
-    query_result = execute_via_substrait(connection, "SELECT * FROM (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9))")
-    expected = pd.Series(range(10), name="col0", dtype="int32")
-    pd.testing.assert_series_equal(query_result.df()["col0"], expected)
-
-
-def test_ctas_with_values(require):
-    connection = require('substrait')
-    query = "CREATE TABLE t1 AS SELECT * FROM (VALUES ('john', 25), ('jane', 21)) AS t(name, age)"
-    execute_via_substrait(connection, query)
-    expected = pd.Series(["john", "jane"], name="name", dtype="object")
-
-    query_result = execute_via_substrait(connection, "SELECT * FROM t1")
-    pd.testing.assert_series_equal(query_result.df()["name"], expected)
-
-
 def test_ctas_with_select_columns(require):
     connection = require('substrait')
     create_employee_table(connection)

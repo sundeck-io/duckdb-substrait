@@ -1418,38 +1418,6 @@ substrait::Rel *DuckDBToSubstrait::TransformIntersect(LogicalOperator &dop) {
 	return rel;
 }
 
-substrait::Expression_Literal DuckDBToSubstrait::ToExpressionLiteral(const substrait::Expression &expr) {
-	substrait::Expression_Literal literal_field;
-	switch (expr.rex_type_case()) {
-	case substrait::Expression::kLiteral:
-		literal_field = expr.literal();
-		break;
-	default:
-		throw NotImplementedException("Unimplemented type of expression to fetch literal");
-	}
-	return literal_field;
-}
-
-substrait::Rel *DuckDBToSubstrait::TransformExpressionGet(LogicalOperator &dop) {
-	auto get_rel = new substrait::Rel();
-	auto &dget = dop.Cast<LogicalExpressionGet>();
-
-	auto sget = get_rel->mutable_read();
-	auto virtual_table = sget->mutable_virtual_table();
-
-	for (auto &row : dget.expressions) {
-		auto row_item = virtual_table->add_values();
-		for (auto &expr : row) {
-			auto s_expr = new substrait::Expression();
-			TransformExpr(*expr, *s_expr);
-			*row_item->add_fields() = ToExpressionLiteral(*s_expr);
-			delete s_expr;
-		}
-	}
-
-	return get_rel;
-}
-
 substrait::Rel *DuckDBToSubstrait::TransformCreateTable(LogicalOperator &dop) {
 	auto rel = new substrait::Rel();
 	auto &create_table = dop.Cast<LogicalCreateTable>();
@@ -1503,8 +1471,6 @@ substrait::Rel *DuckDBToSubstrait::TransformOp(LogicalOperator &dop) {
 		return TransformAggregateGroup(dop);
 	case LogicalOperatorType::LOGICAL_GET:
 		return TransformGet(dop);
-	case LogicalOperatorType::LOGICAL_EXPRESSION_GET:
-		return TransformExpressionGet(dop);
 	case LogicalOperatorType::LOGICAL_CROSS_PRODUCT:
 		return TransformCrossProduct(dop);
 	case LogicalOperatorType::LOGICAL_UNION:

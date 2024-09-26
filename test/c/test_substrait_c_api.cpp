@@ -46,35 +46,6 @@ TEST_CASE("Test C Get and To Json-Substrait API", "[substrait-api]") {
   REQUIRE_THROWS(con.FromSubstraitJSON("this is not valid"));
 }
 
-TEST_CASE("Test C SelectFromValues with JSON-Substrait API", "[substrait-api]") {
-	DuckDB db(nullptr);
-	Connection con(db);
-
-	auto json = con.GetSubstraitJSON("SELECT * FROM (VALUES (1, 2), (3, 4))");
-	auto result = con.FromSubstraitJSON(json);
-	REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
-	REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
-}
-
-TEST_CASE("Test C CTAS Basic with Substrait API", "[substrait-api]") {
-  DuckDB db(nullptr);
-  Connection con(db);
-
-  auto proto = con.GetSubstrait("create table t1 as SELECT * FROM (VALUES ('john', 25), ('jane', 21)) AS t(name, age)");
-  auto result = con.FromSubstrait(proto);
-
-  REQUIRE_NO_FAIL(con.Query("SELECT * from t1"));
-
-  auto json_plan = con.GetSubstraitJSON("create table t2 as SELECT * FROM t1");
-  result = con.FromSubstraitJSON(json_plan);
-
-  proto = con.GetSubstrait("select * from t2 limit 2");
-  result = con.FromSubstrait(proto);
-
-  REQUIRE(CHECK_COLUMN(result, 0, {"john", "jane"}));
-  REQUIRE(CHECK_COLUMN(result, 1, {25, 21}));
-}
-
 duckdb::unique_ptr<QueryResult> ExecuteViaSubstrait(Connection &con, const string &sql) {
   auto proto = con.GetSubstrait(sql);
   return con.FromSubstrait(proto);
