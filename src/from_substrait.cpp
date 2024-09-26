@@ -732,7 +732,7 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformRootOp(const substrait::RelRoot
 		case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
 			const auto create_table = static_cast<CreateTableRelation *>(child.get());
 			auto proj = make_shared_ptr<ProjectionRelation>(create_table->child, std::move(expressions), aliases);
-			return proj->CreateRel(create_table->schema_name, create_table->table_name, false);
+			return proj->CreateRel(create_table->schema_name, create_table->table_name);
 		}
 		default:
 			return child;

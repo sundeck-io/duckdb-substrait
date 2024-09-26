@@ -24,7 +24,7 @@ def test_ctas_with_select_columns(require):
         SELECT name, salary FROM employees""")
 
     expected = pd.DataFrame({"name": ["John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Black"],
-                             "salary": [120000.0, 80000, 50000, 95000, 60000]})
+                             "salary": pd.Series([120000, 80000, 50000, 95000, 60000], dtype="float64")})
 
     query_result = execute_via_substrait(connection, "SELECT * FROM employee_salaries")
     pd.testing.assert_frame_equal(query_result.df(), expected)
@@ -39,7 +39,7 @@ def test_ctas_with_filter(require):
     expected = pd.DataFrame({"employee_id": pd.Series([1, 4], dtype="int32"),
                              "name": ["John Doe", "Bob Brown"],
                              "department_id": pd.Series([1, 3], dtype="int32"),
-                             "salary": [120000.0, 95000]})
+                             "salary":  pd.Series([120000, 95000], dtype="float64")})
 
     query_result = execute_via_substrait(connection, "SELECT * FROM high_earners")
     pd.testing.assert_frame_equal(query_result.df(), expected)
@@ -73,7 +73,7 @@ def test_ctas_with_order_by(require):
     expected = pd.DataFrame({"employee_id": pd.Series([1, 4, 2, 5, 3], dtype="int32"),
                              "name": ["John Doe", "Bob Brown", "Jane Smith", "Charlie Black", "Alice Johnson"],
                              "department_id": pd.Series([1, 3, 2, 2, 1], dtype="int32"),
-                             "salary": [120000.0, 95000, 80000, 60000, 50000]})
+                             "salary":  pd.Series([120000, 95000, 80000, 60000, 50000], dtype="float64")})
 
     query_result = execute_via_substrait(connection, "SELECT * FROM sorted_employees")
     pd.testing.assert_frame_equal(query_result.df(), expected)
@@ -90,7 +90,7 @@ def test_ctas_with_subquery(require):
     """)
 
     expected = pd.DataFrame({"employee_id": pd.Series([1], dtype="int32"),
-                             "name": ["John Doe"], "salary": [120000.0]})
+                             "name": ["John Doe"], "salary":  pd.Series([120000], dtype="float64")})
     query_result = execute_via_substrait(connection, "SELECT * FROM high_salary_employees")
     pd.testing.assert_frame_equal(query_result.df(), expected)
 
@@ -146,7 +146,7 @@ def test_ctas_with_union(require):
                              "name": ["John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Black",
                                       "David White", "Eve Green"],
                              "department_id": pd.Series([1, 2, 1, 3, 2, 1, 2], dtype="int32"),
-                             "salary": [120000.0, 80000, 50000, 95000, 60000, 30000, 40000]})
+                             "salary":  pd.Series([120000, 80000, 50000, 95000, 60000, 30000, 40000], dtype="float64")})
 
     query_result = execute_via_substrait(connection, "SELECT * FROM all_employees")
     pd.testing.assert_frame_equal(query_result.df(), expected)
