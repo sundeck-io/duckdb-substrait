@@ -25,6 +25,7 @@
 #include "google/protobuf/util/json_util.h"
 #include "substrait/plan.pb.h"
 
+#include "duckdb/main/relation/create_table_relation.hpp"
 #include "duckdb/main/relation/table_relation.hpp"
 
 namespace duckdb {
@@ -620,6 +621,30 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformSetOp(const substrait::Rel &sop
 	return make_shared_ptr<SetOpRelation>(std::move(lhs), std::move(rhs), type);
 }
 
+shared_ptr<Relation> SubstraitToDuckDB::TransformWriteOp(const substrait::Rel &sop) {
+	auto &swrite = sop.write();
+
+	switch (swrite.op()) {
+	case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
+		auto &nobj = swrite.named_table();
+		if (nobj.names_size() == 0) {
+			throw InvalidInputException("Named object must have at least one name");
+		}
+		auto table_idx = nobj.names_size() - 1;
+		auto table_name = nobj.names(table_idx);
+		string schema_name;
+		if (table_idx > 0) {
+			schema_name = nobj.names(0);
+		}
+
+		auto input = TransformOp(swrite.input());
+		return input->CreateRel(schema_name, table_name);
+	}
+	default:
+		throw NotImplementedException("Unsupported write operation" + to_string(swrite.op()));
+	}
+}
+
 shared_ptr<Relation> SubstraitToDuckDB::TransformOp(const substrait::Rel &sop) {
 	switch (sop.rel_type_case()) {
 	case substrait::Rel::RelTypeCase::kJoin:
@@ -640,6 +665,8 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformOp(const substrait::Rel &sop) {
 		return TransformSortOp(sop);
 	case substrait::Rel::RelTypeCase::kSet:
 		return TransformSetOp(sop);
+	case substrait::Rel::RelTypeCase::kWrite:
+		return TransformWriteOp(sop);
 	default:
 		throw InternalException("Unsupported relation type " + to_string(sop.rel_type_case()));
 	}
@@ -696,6 +723,19 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformRootOp(const substrait::RelRoot
 		for (auto &column_name : column_names) {
 			aliases.push_back(column_name);
 			expressions.push_back(make_uniq<PositionalReferenceExpression>(id++));
+		}
+	}
+
+	if (sop.input().rel_type_case() == substrait::Rel::RelTypeCase::kWrite) {
+		auto write = sop.input().write();
+		switch (write.op()) {
+		case substrait::WriteRel::WriteOp::WriteRel_WriteOp_WRITE_OP_CTAS: {
+			const auto create_table = static_cast<CreateTableRelation *>(child.get());
+			auto proj = make_shared_ptr<ProjectionRelation>(create_table->child, std::move(expressions), aliases);
+			return proj->CreateRel(create_table->schema_name, create_table->table_name);
+		}
+		default:
+			return child;
 		}
 	}
 
