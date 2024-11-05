@@ -27,6 +27,8 @@
 
 #include "duckdb/main/relation/create_table_relation.hpp"
 #include <duckdb/main/relation/delete_relation.hpp>
+#include <duckdb/main/relation/value_relation.hpp>
+
 #include "duckdb/main/relation/table_relation.hpp"
 
 namespace duckdb {
@@ -557,17 +559,34 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformReadOp(const substrait::Rel &so
 		scan = con.TableFunction("parquet_scan", {Value::LIST(parquet_files)}, named_parameters)->Alias(name);
 	} else if (sget.has_virtual_table()) {
 		// We need to handle a virtual table as a LogicalExpressionGet
-		auto literal_values = sget.virtual_table().values();
-		vector<vector<Value>> expression_rows;
-		for (auto &row : literal_values) {
-			auto values = row.fields();
-			vector<Value> expression_row;
-			for (const auto &value : values) {
-				expression_row.emplace_back(TransformLiteralToValue(value));
+		if (!sget.virtual_table().values().empty()) {
+			auto literal_values = sget.virtual_table().values();
+			vector<vector<Value>> expression_rows;
+			for (auto &row : literal_values) {
+				auto values = row.fields();
+				vector<Value> expression_row;
+				for (const auto &value : values) {
+					expression_row.emplace_back(TransformLiteralToValue(value));
+				}
+				expression_rows.emplace_back(expression_row);
 			}
-			expression_rows.emplace_back(expression_row);
+			scan = con.Values(expression_rows);
+		} else
+		{
+			auto expression_rows = sget.virtual_table().expressions();
+			vector<vector<unique_ptr<ParsedExpression>>> expressions;
+			for (auto &row : expression_rows) {
+				vector<unique_ptr<ParsedExpression>> expression_row;
+				for (const auto &expr : row.fields()) {
+					expression_row.emplace_back(TransformExpr(expr));
+				}
+				expressions.emplace_back(std::move(expression_row));
+			}
+			vector<string> column_names;
+			auto context = con.context;
+			scan = make_shared_ptr<ValueRelation>(context, std::move(expressions), column_names);
 		}
-		scan = con.Values(expression_rows);
+
 	} else {
 		throw NotImplementedException("Unsupported type of read operator for substrait");
 	}

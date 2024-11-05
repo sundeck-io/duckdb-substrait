@@ -293,3 +293,27 @@ TEST_CASE("Test C DeleteRows with Substrait API", "[substrait-api]") {
 	REQUIRE(CHECK_COLUMN(result, 2, {1, 2, 3}));
 	REQUIRE(CHECK_COLUMN(result, 3, {120000, 80000, 95000}));
 }
+
+TEST_CASE("Test C VirtualTable input Literal", "[substrait-api]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	//con.EnableQueryVerification();
+
+	auto json = con.GetSubstraitJSON("select * from (values (1, 2),(3, 4))");
+	auto result = con.FromSubstraitJSON(json);
+
+	REQUIRE(CHECK_COLUMN(result, 0, {1, 3}));
+	REQUIRE(CHECK_COLUMN(result, 1, {2, 4}));
+}
+
+TEST_CASE("Test C VirtualTable input Expression", "[substrait-api]") {
+	DuckDB db(nullptr);
+	Connection con(db);
+	//con.EnableQueryVerification();
+
+	auto json = con.GetSubstraitJSON("select * from (values (1+1,2+2),(3+3,4+4)) as temp(a,b)");
+	auto result = con.FromSubstraitJSON(json);
+
+	REQUIRE(CHECK_COLUMN(result, 0, {2, 6}));
+	REQUIRE(CHECK_COLUMN(result, 1, {4, 8}));
+}
