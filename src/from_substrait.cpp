@@ -430,27 +430,15 @@ shared_ptr<Relation> SubstraitToDuckDB::TransformJoinOp(const substrait::Rel &so
 	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_RIGHT:
 		djointype = JoinType::RIGHT;
 		break;
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_LEFT_SINGLE:
+	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_SINGLE:
 		djointype = JoinType::SINGLE;
 		break;
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_LEFT_SEMI:
+	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_SEMI:
 		djointype = JoinType::SEMI;
 		break;
 	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_OUTER:
 		djointype = JoinType::OUTER;
 		break;
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_RIGHT_SEMI:
-		throw InternalException("Unsupported join type RIGHT_SEMI");
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_LEFT_ANTI:
-		throw InternalException("Unsupported join type LEFT_ANTI");
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_RIGHT_ANTI:
-		throw InternalException("Unsupported join type RIGHT_ANTI");
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_RIGHT_SINGLE:
-		throw InternalException("Unsupported join type RIGHT_SINGLE");
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_LEFT_MARK:
-		throw InternalException("Unsupported join type LEFT_MARK");
-	case substrait::JoinRel::JoinType::JoinRel_JoinType_JOIN_TYPE_RIGHT_MARK:
-		throw InternalException("Unsupported join type RIGHT_MARK");
 	default:
 		throw InternalException("Unsupported join type");
 	}
